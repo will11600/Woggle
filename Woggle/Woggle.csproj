@@ -4,6 +4,23 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Authors>willbldn</Authors>
+    <Copyright>© William Brocklesby 2025</Copyright>
+    <Description>A .NET library that provides high-performance, memory-efficient collections using ArrayPool to reduce garbage collection pressure and improve the performance of your applications.</Description>
+    <PackageProjectUrl>https://github.com/will11600/Woggle</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/will11600/Woggle.git</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageVersion>1.0.0</PackageVersion>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
 </Project>
