@@ -128,6 +128,69 @@ public sealed class PooledList<T> : IList<T>, IDisposable
     }
 
     /// <summary>
+    /// Creates a new span over the target array.
+    /// </summary>
+    public Span<T> AsSpan()
+    {
+        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        return new(_handle.Array, 0, Count);
+    }
+
+    /// <summary>
+    /// Creates a new Span over the portion of the target array beginning
+    /// at 'start' index and ending at 'end' index (exclusive).
+    /// </summary>
+    /// <param name="start">The index at which to begin the Span.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when the specified <paramref name="start"/> or end index is not in the range (&lt;0 or &gt;Length).
+    /// </exception>
+    public Span<T> AsSpan(int start)
+    {
+        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(start, Count, nameof(start));
+        return new(_handle.Array, start, Count);
+    }
+
+    /// <summary>
+    /// Creates a new Span over the portion of the target array beginning
+    /// at 'start' index and ending at 'end' index (exclusive).
+    /// </summary>
+    /// <param name="start">The index at which to begin the Span.</param>
+    /// <param name="length">The number of items in the Span.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when the specified <paramref name="start"/> or end index is not in the range (&lt;0 or &gt;Length).
+    /// </exception>
+    public Span<T> AsSpan(int start, int length)
+    {
+        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(start, Count, nameof(start));
+        ArgumentOutOfRangeException.ThrowIfNegative(length, nameof(length));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(length, Count, nameof(length));
+        ArgumentOutOfRangeException.ThrowIfLessThan(length, start, nameof(length));
+        return new(_handle.Array, start, length);
+    }
+
+    /// <summary>
+    /// Implicitly converts a <see cref="PooledList{T}"/> to a <see cref="Span{T}"/>.
+    /// </summary>
+    /// <param name="pooledList">The pooled list to convert.</param>
+    public static implicit operator Span<T>(PooledList<T> pooledList)
+    {
+        return pooledList.AsSpan();
+    }
+
+    /// <summary>
+    /// Implicitly converts a <see cref="PooledList{T}"/> to a <see cref="ReadOnlySpan{T}"/>.
+    /// </summary>
+    /// <param name="pooledList">The pooled list to convert.</param>
+    public static implicit operator ReadOnlySpan<T>(PooledList<T> pooledList)
+    {
+        return pooledList.AsSpan();
+    }
+
+    /// <summary>
     /// Adds an object to the end of the <see cref="PooledList{T}"/>.
     /// </summary>
     /// <param name="item">The object to be added to the end of the <see cref="PooledList{T}"/>. The value can be null for reference types.</param>
