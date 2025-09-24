@@ -72,6 +72,14 @@ public sealed class PooledList<T> : IList<T>, IDisposable
     private Span<T> Items => new(_handle.Array, 0, Count);
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="PooledList{T}"/> class that is empty and has a default initial capacity.
+    /// </summary>
+    public PooledList()
+    {
+        _handle = new PooledArrayHandle<T>(ArrayDefaults.DefaultCapacity, ArrayPool<T>.Shared);
+    }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="PooledList{T}"/> class that is empty and has the specified initial capacity.
     /// </summary>
     /// <param name="capacity">The number of elements that the new list can initially store.</param>
