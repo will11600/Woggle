@@ -8,7 +8,7 @@ namespace Woggle;
 /// </summary>
 /// <typeparam name="T">The type of elements in the list.</typeparam>
 /// <remarks>
-/// This collection is not thread-safe. You must call <see cref="Dispose"/> to return the underlying array to the pool.
+/// This collection is not thread-safe. You must call <see cref="Dispose()"/> to return the underlying array to the pool.
 /// Failure to do so will result in a memory leak.
 /// </remarks>
 public sealed class PooledList<T> : IList<T>, IDisposable
@@ -101,6 +101,9 @@ public sealed class PooledList<T> : IList<T>, IDisposable
         Count = count;
     }
 
+    /// <summary>
+    /// Releases all resources used by the <see cref="PooledList{T}"/> by returning the underlying rented array to the pool.
+    /// </summary>
     ~PooledList()
     {
         Dispose(false);
@@ -150,10 +153,15 @@ public sealed class PooledList<T> : IList<T>, IDisposable
     {
         ObjectDisposedException.ThrowIf(_handle.Disposed, this);
 
-        int minSize = Count + items.Length;
-        if (minSize > _handle.Array.Length)
+        int availableSpace = _handle.Array.Length - Count;
+        if (availableSpace < items.Length)
         {
-            Resize(minSize);
+            int newSize;
+            checked
+            {
+                newSize = ((items.Length - availableSpace) << 1) + Count;
+            }
+            Resize(newSize);
         }
 
         Span<T> destination = new(_handle.Array, Count, items.Length);
