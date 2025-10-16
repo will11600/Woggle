@@ -8,59 +8,32 @@ namespace Woggle;
 /// </summary>
 /// <typeparam name="T">The type of elements in the list.</typeparam>
 /// <remarks>
-/// This collection is not thread-safe. You must call <see cref="Dispose()"/> to return the underlying array to the pool.
-/// Failure to do so will result in a memory leak.
+/// This collection is not thread-safe.
 /// </remarks>
-public sealed class PooledList<T> : IList<T>, IDisposable
+public sealed class PooledList<T> : PooledArrayHandler<T>, IList<T>, ICollection<T>
 {
-    private readonly PooledArrayHandle<T> _handle;
+    private const int DefaultCapacity = 8;
 
-    /// <summary>
-    /// Gets or sets the element at the specified index.
-    /// </summary>
-    /// <param name="index">The zero-based index of the element to get or set.</param>
-    /// <value>The element at the specified index.</value>
-    /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="index"/> is negative.
-    /// -or-
-    /// <paramref name="index"/> is equal to or greater than <see cref="Count"/>.
-    /// </exception>
+    private static readonly Func<T[], T, int, int> _indexOf;
+
+    /// <inheritdoc/>
     public T this[int index]
     {
         get
         {
             ArgumentOutOfRangeException.ThrowIfNegative(index, nameof(index));
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Count, nameof(index));
-            return _handle.Array[index];
+            return Array[index];
         }
         set
         {
             ArgumentOutOfRangeException.ThrowIfNegative(index, nameof(index));
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Count, nameof(index));
-            _handle.Array[index] = value;
+            Array[index] = value;
         }
     }
 
-    /// <summary>
-    /// Gets a new <see cref="PooledArray{T}"/> that represents a slice of the current instance.
-    /// </summary>
-    /// <param name="range">The range of elements to include in the new array.</param>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown if the start or end of the range is out of bounds.</exception>
-    public PooledArray<T> this[Range range]
-    {
-        get
-        {
-            ArgumentOutOfRangeException.ThrowIfNegative(range.Start.Value, nameof(range.Start));
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(range.End.Value, Count, nameof(range.End));
-            ReadOnlySpan<T> values = _handle.Array.AsSpan(range);
-            return new PooledArray<T>(values, _handle.Pool);
-        }
-    }
-
-    /// <summary>
-    /// Gets the number of elements contained in the <see cref="PooledList{T}"/>.
-    /// </summary>
+    /// <inheritdoc/>
     public int Count { get; private set; }
 
     /// <summary>
@@ -69,25 +42,34 @@ public sealed class PooledList<T> : IList<T>, IDisposable
     /// <returns>This property always returns <c>false</c>.</returns>
     public bool IsReadOnly => false;
 
-    private Span<T> Items => new(_handle.Array, 0, Count);
+    private Span<T> Items => new(Array, 0, Count);
+
+    static PooledList()
+    {
+        if (typeof(T).IsAssignableTo(typeof(IComparable<T>)))
+        {
+            _indexOf = BinarySearch;
+            return;
+        }
+
+        _indexOf = LinearSearch;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PooledList{T}"/> class that is empty and has a default initial capacity.
     /// </summary>
-    public PooledList()
+    public PooledList() : base(DefaultCapacity, ArrayPool<T>.Shared)
     {
-        _handle = new PooledArrayHandle<T>(ArrayDefaults.DefaultCapacity, ArrayPool<T>.Shared);
+        Count = default;
     }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PooledList{T}"/> class that is empty and has the specified initial capacity.
     /// </summary>
     /// <param name="capacity">The number of elements that the new list can initially store.</param>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="capacity"/> is less than 1.</exception>
-    public PooledList(int capacity = ArrayDefaults.DefaultCapacity)
+    public PooledList(int capacity) : base(capacity, ArrayPool<T>.Shared)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, ArrayDefaults.MinCapacity, nameof(capacity));
-        _handle = new PooledArrayHandle<T>(capacity, ArrayPool<T>.Shared);
+        Count = default;
     }
 
     /// <summary>
@@ -95,26 +77,9 @@ public sealed class PooledList<T> : IList<T>, IDisposable
     /// </summary>
     /// <param name="arrayPool">The <see cref="ArrayPool{T}"/> to use.</param>
     /// <param name="capacity">The number of elements that the new list can initially store.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="arrayPool"/> is null.</exception>
-    public PooledList(ArrayPool<T> arrayPool, int capacity = ArrayDefaults.DefaultCapacity)
+    public PooledList(ArrayPool<T> arrayPool, int capacity = DefaultCapacity) : base(capacity, arrayPool)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, ArrayDefaults.MinCapacity, nameof(capacity));
-        _handle = new PooledArrayHandle<T>(capacity, arrayPool);
-    }
-
-    internal PooledList(PooledArrayHandle<T> handle, int count)
-    {
-        _handle = handle ?? throw new ArgumentNullException(nameof(handle));
-        ArgumentOutOfRangeException.ThrowIfNegative(count, nameof(count));
-        Count = count;
-    }
-
-    /// <summary>
-    /// Releases all resources used by the <see cref="PooledList{T}"/> by returning the underlying rented array to the pool.
-    /// </summary>
-    ~PooledList()
-    {
-        Dispose(false);
+        Count = default;
     }
 
     private void Expand()
@@ -122,243 +87,174 @@ public sealed class PooledList<T> : IList<T>, IDisposable
         int capacity;
         checked
         {
-            capacity = _handle.Array.Length << 1;
+            capacity = Array.Length * 2;
         }
 
         Resize(capacity);
     }
 
+    private void Expand(int count)
+    {
+        int availableSpace = Array.Length - Count;
+
+        if (availableSpace >= count)
+        {
+            return;
+        }
+
+        int newSize;
+        checked
+        {
+            newSize = ((count - availableSpace) * 2) + Count;
+        }
+        Resize(newSize);
+    }
+
     private void Resize(int capacity)
     {
-        T[] array = _handle.Pool.Rent(capacity);
+        T[] array = Pool.Rent(capacity);
         Items.CopyTo(array);
-        _handle.Array = array;
+        Array = array;
     }
 
-    /// <summary>
-    /// Creates a new span over the target array.
-    /// </summary>
-    public Span<T> AsSpan()
-    {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-        return new(_handle.Array, 0, Count);
-    }
-
-    /// <summary>
-    /// Creates a new Span over the portion of the target array beginning
-    /// at 'start' index and ending at 'end' index (exclusive).
-    /// </summary>
-    /// <param name="start">The index at which to begin the Span.</param>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// Thrown when the specified <paramref name="start"/> or end index is not in the range (&lt;0 or &gt;Length).
-    /// </exception>
-    public Span<T> AsSpan(int start)
-    {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-        ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(start, Count, nameof(start));
-        return new(_handle.Array, start, Count);
-    }
-
-    /// <summary>
-    /// Creates a new Span over the portion of the target array beginning
-    /// at 'start' index and ending at 'end' index (exclusive).
-    /// </summary>
-    /// <param name="start">The index at which to begin the Span.</param>
-    /// <param name="length">The number of items in the Span.</param>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// Thrown when the specified <paramref name="start"/> or end index is not in the range (&lt;0 or &gt;Length).
-    /// </exception>
-    public Span<T> AsSpan(int start, int length)
-    {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-        ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(start, Count, nameof(start));
-        ArgumentOutOfRangeException.ThrowIfNegative(length, nameof(length));
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(length, Count, nameof(length));
-        ArgumentOutOfRangeException.ThrowIfLessThan(length, start, nameof(length));
-        return new(_handle.Array, start, length);
-    }
-
-    /// <summary>
-    /// Implicitly converts a <see cref="PooledList{T}"/> to a <see cref="Span{T}"/>.
-    /// </summary>
-    /// <param name="pooledList">The pooled list to convert.</param>
-    public static implicit operator Span<T>(PooledList<T> pooledList)
-    {
-        return pooledList.AsSpan();
-    }
-
-    /// <summary>
-    /// Implicitly converts a <see cref="PooledList{T}"/> to a <see cref="ReadOnlySpan{T}"/>.
-    /// </summary>
-    /// <param name="pooledList">The pooled list to convert.</param>
-    public static implicit operator ReadOnlySpan<T>(PooledList<T> pooledList)
-    {
-        return pooledList.AsSpan();
-    }
-
-    /// <summary>
-    /// Adds an object to the end of the <see cref="PooledList{T}"/>.
-    /// </summary>
-    /// <param name="item">The object to be added to the end of the <see cref="PooledList{T}"/>. The value can be null for reference types.</param>
-    /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
+    /// <inheritdoc/>
     public void Add(T item)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ObjectDisposedException.ThrowIf(Disposed, this);
 
-        if (_handle.Array.Length <= Count)
+        if (Array.Length <= Count)
         {
             Expand();
         }
 
-        _handle.Array[Count++] = item;
+        Array[Count++] = item;
     }
 
     /// <summary>
-    /// Adds the elements of the specified span to the end of the <see cref="PooledList{T}"/>.
+    /// Adds the elements of the specified <see cref="ReadOnlySpan{T}"/> to the end of the <see cref="PooledList{T}"/>.
     /// </summary>
-    /// <param name="items">The span whose elements should be added to the end of the <see cref="PooledList{T}"/>.</param>
+    /// <param name="items">The <see cref="ReadOnlySpan{T}"/> whose elements should be added to the end of the <see cref="PooledList{T}"/>.</param>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
+    [Obsolete($"This method is deprecated and will be removed in future versions. Use {nameof(AddRange)} instead.")]
     public void Add(ReadOnlySpan<T> items)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-
-        int availableSpace = _handle.Array.Length - Count;
-        if (availableSpace < items.Length)
-        {
-            int newSize;
-            checked
-            {
-                newSize = ((items.Length - availableSpace) << 1) + Count;
-            }
-            Resize(newSize);
-        }
-
-        Span<T> destination = new(_handle.Array, Count, items.Length);
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        Expand(items.Length);
+        Span<T> destination = new(Array, Count, items.Length);
         items.CopyTo(destination);
-
         Count += items.Length;
     }
 
     /// <summary>
-    /// Removes all elements from the <see cref="PooledList{T}"/>.
+    /// Adds the elements of the specified <see cref="ReadOnlySpan{T}"/> to the end of the <see cref="PooledList{T}"/>.
     /// </summary>
+    /// <param name="items">The <see cref="ReadOnlySpan{T}"/> whose elements should be added to the end of the <see cref="PooledList{T}"/>.</param>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
+    public void AddRange(ReadOnlySpan<T> items)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        Expand(items.Length);
+        Span<T> destination = new(Array, Count, items.Length);
+        items.CopyTo(destination);
+        Count += items.Length;
+    }
+
+    /// <summary>
+    /// Adds the elements of the specified <see cref="ICollection{T}"/> to the end of the <see cref="PooledList{T}"/>.
+    /// </summary>
+    /// <param name="items">The <see cref="ICollection{T}"/> whose elements should be added to the end of the <see cref="PooledList{T}"/>.</param>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
+    public void AddRange(ICollection<T> items)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        Expand(items.Count);
+        items.CopyTo(Array, Count);
+        Count += items.Count;
+    }
+
+    /// <summary>
+    /// Adds the elements of the specified <see cref="IEnumerable{T}"/> to the end of the <see cref="PooledList{T}"/>.
+    /// </summary>
+    /// <param name="items">The <see cref="IEnumerable{T}"/> whose elements should be added to the end of the <see cref="PooledList{T}"/>.</param>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
+    public void AddRange(IEnumerable<T> items)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        foreach (T item in items)
+        {
+            Add(item);
+        }
+    }
+
+    /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
     public void Clear()
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ObjectDisposedException.ThrowIf(Disposed, this);
 
-        if (_handle.TypeIsReferenceOrContainsReferences)
+        if (t_isReferenceOrContainsReferences)
         {
             Items.Clear();
         }
 
-        Count = 0;
+        Count = default;
     }
 
-    /// <summary>
-    /// Determines whether an element is in the <see cref="PooledList{T}"/>.
-    /// </summary>
-    /// <param name="item">The object to locate in the <see cref="PooledList{T}"/>. The value can be null for reference types.</param>
-    /// <returns><c>true</c> if item is found in the <see cref="PooledList{T}"/>; otherwise, <c>false</c>.</returns>
+    /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
     public bool Contains(T item)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         return IndexOf(item) != -1;
     }
 
-    /// <summary>
-    /// Copies the entire <see cref="PooledList{T}"/> to a compatible one-dimensional array, starting at the specified index of the target array.
-    /// </summary>
-    /// <param name="array">The one-dimensional <see cref="Array"/> that is the destination of the elements copied from <see cref="PooledList{T}"/>. The <see cref="Array"/> must have zero-based indexing.</param>
-    /// <param name="arrayIndex">The zero-based index in <paramref name="array"/> at which copying begins.</param>
+    /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="arrayIndex"/> is negative.
-    /// -or-
-    /// <paramref name="arrayIndex"/> is greater than <see cref="Count"/>.
-    /// </exception>
     public void CopyTo(T[] array, int arrayIndex)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-        ArgumentOutOfRangeException.ThrowIfNegative(arrayIndex, nameof(arrayIndex));
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(arrayIndex, Count, nameof(arrayIndex));
-
-        Items.CopyTo(array.AsSpan(arrayIndex));
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        Array.AsSpan(0, Count).CopyTo(array.AsSpan(arrayIndex));
     }
 
-    /// <summary>
-    /// Searches for the specified object and returns the zero-based index of the first occurrence within the entire <see cref="PooledList{T}"/>.
-    /// </summary>
-    /// <param name="item">The object to locate in the <see cref="PooledList{T}"/>. The value can be null for reference types.</param>
-    /// <returns>The zero-based index of the first occurrence of <paramref name="item"/> within the entire <see cref="PooledList{T}"/>, if found; otherwise, –1.</returns>
+    /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
     public int IndexOf(T item)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-
-        T[] array = _handle.Array;
-        for (int i = 0; i < Count; i++)
-        {
-            if (Equals(array[i], item))
-            {
-                return i;
-            }
-        }
-        return -1;
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        return _indexOf(Array, item, Count);
     }
 
-    /// <summary>
-    /// Inserts an element into the <see cref="PooledList{T}"/> at the specified index.
-    /// </summary>
-    /// <param name="index">The zero-based index at which <paramref name="item"/> should be inserted.</param>
-    /// <param name="item">The object to insert. The value can be null for reference types.</param>
+    /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="index"/> is negative.
-    /// -or-
-    /// <paramref name="index"/> is greater than <see cref="Count"/>.
-    /// </exception>
     public void Insert(int index, T item)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegative(index, nameof(index));
         ArgumentOutOfRangeException.ThrowIfGreaterThan(index, Count, nameof(index));
 
-        T[] array = _handle.Array;
-
-        if (array.Length <= Count)
+        if (Array.Length <= Count)
         {
             Expand();
         }
 
         if (index < Count)
         {
-            ReadOnlySpan<T> source = array.AsSpan(index, Count - index);
-            Span<T> destination = array.AsSpan(index + 1, Count - index);
+            ReadOnlySpan<T> source = Array.AsSpan(index, Count - index);
+            Span<T> destination = Array.AsSpan(index + 1, Count - index);
             source.CopyTo(destination);
         }
 
-        array[index] = item;
+        Array[index] = item;
         Count++;
     }
 
-    /// <summary>
-    /// Removes the first occurrence of a specific object from the <see cref="PooledList{T}"/>.
-    /// </summary>
-    /// <param name="item">The object to remove from the <see cref="PooledList{T}"/>. The value can be null for reference types.</param>
-    /// <returns>
-    /// <c>true</c> if <paramref name="item"/> is successfully removed; otherwise, <c>false</c>.
-    /// This method also returns <c>false</c> if <paramref name="item"/> was not found in the <see cref="PooledList{T}"/>.
-    /// </returns>
+    /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
     public bool Remove(T item)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ObjectDisposedException.ThrowIf(Disposed, this);
 
-        int index = IndexOf(item);
+        int index = _indexOf(Array, item, Count);
         if (index == -1)
         {
             return false;
@@ -368,79 +264,50 @@ public sealed class PooledList<T> : IList<T>, IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Removes the element at the specified index of the <see cref="PooledList{T}"/>.
-    /// </summary>
-    /// <param name="index">The zero-based index of the element to remove.</param>
+    /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="index"/> is negative.
-    /// -or-
-    /// <paramref name="index"/> is equal to or greater than <see cref="Count"/>.
-    /// </exception>
     public void RemoveAt(int index)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegative(index, nameof(index));
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Count, nameof(index));
 
-        T[] array = _handle.Array;
-
         if (index < Count--)
         {
-            var source = array.AsSpan(index + 1, Count - index);
-            var destination = array.AsSpan(index, Count - index);
+            var source = Array.AsSpan(index + 1, Count - index);
+            var destination = Array.AsSpan(index, Count - index);
             source.CopyTo(destination);
         }
 
-        array[Count] = default!;
+        Array[Count] = default!;
     }
 
-    /// <summary>
-    /// Returns an enumerator that iterates through the <see cref="PooledList{T}"/>.
-    /// </summary>
-    /// <returns>An <see cref="IEnumerator{T}"/> for the <see cref="PooledList{T}"/>.</returns>
+    /// <inheritdoc/>
     /// <exception cref="ObjectDisposedException">The <see cref="PooledList{T}"/> has been disposed.</exception>
     public IEnumerator<T> GetEnumerator()
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-        T[] array = _handle.Array;
-        for (int i = 0; i < Count; i++)
-        {
-            yield return array[i];
-        }
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        return Array.Take(Count).GetEnumerator();
     }
 
-    /// <summary>
-    /// Returns an enumerator that iterates through a collection.
-    /// </summary>
-    /// <returns>An <see cref="IEnumerator"/> object that can be used to iterate through the collection.</returns>
     IEnumerator IEnumerable.GetEnumerator()
     {
         return GetEnumerator();
     }
 
-    private void Dispose(bool disposing)
+    internal static PooledList<T> FromCollection(ICollection<T> values, ArrayPool<T> arrayPool)
     {
-        if (_handle.Disposed)
-        {
-            return;
-        }
-
-        if (disposing)
-        {
-            // This is the place to clean up other managed IDisposable objects if there were any.
-        }
-
-        _handle.Dispose();
+        PooledList<T> list = new(arrayPool, values.Count);
+        values.CopyTo(list.Array, 0);
+        list.Count = values.Count;
+        return list;
     }
 
-    /// <summary>
-    /// Releases all resources used by the <see cref="PooledList{T}"/> by returning the underlying rented array to the pool.
-    /// </summary>
-    public void Dispose()
+    internal static PooledList<T> FromSpan(ReadOnlySpan<T> values, ArrayPool<T> arrayPool)
     {
-        Dispose(true);
-        GC.SuppressFinalize(this);
+        PooledList<T> list = new(arrayPool, values.Length);
+        values.CopyTo(list.Array);
+        list.Count = values.Length;
+        return list;
     }
 }

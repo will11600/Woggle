@@ -7,134 +7,246 @@ namespace Woggle;
 /// Represents a pooled array that uses an <see cref="ArrayPool{T}"/> for memory management.
 /// </summary>
 /// <typeparam name="T">The type of elements in the array.</typeparam>
-/// <remarks>
-/// This collection is not thread-safe. You must call <see cref="Dispose"/> to return the underlying array to the pool.
-/// Failure to do so will result in a memory leak.
-/// </remarks>
-public readonly struct PooledArray<T> : IReadOnlyList<T>, IDisposable
+public sealed class PooledArray<T> : PooledArrayHandler<T>, ICollection<T>, IList<T>, IStructuralEquatable, IStructuralComparable, ICloneable
 {
-    private readonly PooledArrayHandle<T> _handle;
+    private const string FixedSizeCollectionMessage = "Collection is of a fixed size.";
 
-    /// <summary>
-    /// Gets a new <see cref="PooledArray{T}"/> that represents a slice of the current instance.
-    /// </summary>
-    /// <param name="range">The range of elements to include in the new array.</param>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown if the start or end of the range is out of bounds.</exception>
-    public readonly PooledArray<T> this[Range range]
-    {
-        get
-        {
-            ArgumentOutOfRangeException.ThrowIfNegative(range.Start.Value, nameof(range.Start));
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(range.End.Value, Count, nameof(range.End));
-            ReadOnlySpan<T> values = _handle.Array.AsSpan(range);
-            return new PooledArray<T>(values, _handle.Pool);
-        }
-    }
+    private static readonly Func<T[], T, int, int> _indexOf;
 
-    /// <summary>
-    /// Gets or sets the element at the specified index.
-    /// </summary>
-    /// <param name="index">The zero-based index of the element to get or set.</param>
-    /// <returns>The element at the specified index.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="index"/> is a negative value or is greater than or equal to <see cref="Count"/>.</exception>
-    public readonly T this[int index]
+    /// <inheritdoc/>
+    public T this[int index]
     {
         get
         {
             ArgumentOutOfRangeException.ThrowIfNegative(index, nameof(index));
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Count, nameof(index));
-            return _handle.Array[index];
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Length, nameof(index));
+            return Array[index];
         }
         set
         {
             ArgumentOutOfRangeException.ThrowIfNegative(index, nameof(index));
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Count, nameof(index));
-            _handle.Array[index] = value;
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Length, nameof(index));
+            Array[index] = value;
         }
     }
 
+    static PooledArray()
+    {
+        if (typeof(T).IsAssignableTo(typeof(IComparable<T>)))
+        {
+            _indexOf = BinarySearch;
+            return;
+        }
+
+        _indexOf = LinearSearch;
+    }
+
     /// <summary>
-    /// Gets the number of elements contained in the <see cref="PooledArray{T}"/>.
+    /// Gets the total number of elements in the <see cref="PooledArray{T}"/>.
     /// </summary>
-    public int Count { get; }
+    public int Length { get; }
+
+    int ICollection<T>.Count => Length;
+
+    /// <inheritdoc/>
+    public bool IsReadOnly { get; } = false;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PooledArray{T}"/> struct with a specified length, renting from the shared <see cref="ArrayPool{T}"/>.
     /// </summary>
     /// <param name="length">The number of elements in the array.</param>
-    public PooledArray(int length)
+    public PooledArray(int length) : base(length, ArrayPool<T>.Shared)
     {
-        _handle = new(length, ArrayPool<T>.Shared);
-        Count = length;
+        Length = length;
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="PooledArray{T}"/> struct by copying elements from a specified <see cref="ReadOnlySpan{T}"/>.
+    /// Initializes a new instance of the <see cref="PooledArray{T}"/> struct with a specified length, renting from the shared <see cref="ArrayPool{T}"/>.
     /// </summary>
-    /// <param name="items">The span containing the elements to copy.</param>
-    public PooledArray(ReadOnlySpan<T> items) : this(items.Length)
-    {
-        items.CopyTo(_handle.Array);
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PooledArray{T}"/> struct with a specified length, renting from a provided <see cref="ArrayPool{T}"/>.
-    /// </summary>
+    /// <param name="arrayPool">The <see cref="ArrayPool{T}"/> to use.</param>
     /// <param name="length">The number of elements in the array.</param>
-    /// <param name="arrayPool">The <see cref="ArrayPool{T}"/> to rent the array from.</param>
-    public PooledArray(int length, ArrayPool<T> arrayPool)
+    public PooledArray(ArrayPool<T> arrayPool, int length) : base(length, arrayPool)
     {
-        _handle = new(length, arrayPool);
-        Count = length;
+        Length = length;
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PooledArray{T}"/> struct by copying elements from a specified <see cref="ReadOnlySpan{T}"/> and renting from a provided <see cref="ArrayPool{T}"/>.
-    /// </summary>
-    /// <param name="items">The span containing the elements to copy.</param>
-    /// <param name="arrayPool">The <see cref="ArrayPool{T}"/> to rent the array from.</param>
-    public PooledArray(ReadOnlySpan<T> items, ArrayPool<T> arrayPool) : this(items.Length, arrayPool)
+    void ICollection<T>.Add(T item)
     {
-        items.CopyTo(_handle.Array);
+        throw new NotSupportedException(FixedSizeCollectionMessage);
     }
 
-    internal PooledArray(PooledArrayHandle<T> handle, int count)
+    void ICollection<T>.Clear()
     {
-        _handle = handle ?? throw new ArgumentNullException(nameof(handle));
-        ArgumentOutOfRangeException.ThrowIfNegative(count, nameof(count));
-        Count = count;
+        throw new NotSupportedException(FixedSizeCollectionMessage);
     }
 
-    /// <summary>
-    /// Returns an enumerator that iterates through the <see cref="PooledArray{T}"/>.
-    /// </summary>
-    /// <returns>An enumerator that can be used to iterate through the array.</returns>
-    public readonly IEnumerator<T> GetEnumerator()
+    bool ICollection<T>.Remove(T item)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-        T[] array = _handle.Array;
-        for (int i = 0; i < Count; i++)
-        {
-            yield return array[i];
-        }
+        throw new NotSupportedException(FixedSizeCollectionMessage);
     }
 
-    /// <summary>
-    /// Returns an enumerator that iterates through the <see cref="PooledArray{T}"/>.
-    /// </summary>
-    /// <returns>An enumerator that can be used to iterate through the array.</returns>
-    readonly IEnumerator IEnumerable.GetEnumerator()
+    void IList<T>.Insert(int index, T item)
+    {
+        throw new NotSupportedException(FixedSizeCollectionMessage);
+    }
+
+    void IList<T>.RemoveAt(int index)
+    {
+        throw new NotSupportedException(FixedSizeCollectionMessage);
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
+    public bool Contains(T item)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        return _indexOf(Array, item, Length) >= 0;
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
+    public void CopyTo(T[] array, int arrayIndex)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        Span<T> source = new(Array, arrayIndex, Length);
+        source.CopyTo(array);
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
+    public int IndexOf(T item)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        return _indexOf(Array, item, Length);
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
+    public IEnumerator<T> GetEnumerator()
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        return Array.Take(Length).GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
     {
         return GetEnumerator();
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
+    /// <exception cref="ArgumentNullException">The <paramref name="comparer"/> is null.</exception>
+    public bool Equals(object? other, IEqualityComparer comparer)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+
+        if (other is null)
+        {
+            return false;
+        }
+
+        ArgumentNullException.ThrowIfNull(comparer, nameof(comparer));
+
+        return ReferenceEquals(this, other) || other switch
+        {
+            IReadOnlyCollection<T> values => Length == values.Count && CompareSequences(this, values, comparer),
+            IEnumerable<T> values => CompareSequences(this, values, comparer),
+            _ => false
+        };
+    }
+
+    private static bool CompareSequences(PooledArray<T> left, IEnumerable<T> right, IEqualityComparer comparer)
+    {
+        var leftEnumerator = left.GetEnumerator();
+        var rightEnumerator = right.GetEnumerator();
+
+        while (leftEnumerator.MoveNext() && rightEnumerator.MoveNext())
+        {
+            if (!comparer.Equals(leftEnumerator.Current, rightEnumerator.Current))
+            {
+                return false;
+            }
+        }
+        
+        return leftEnumerator.MoveNext() == rightEnumerator.MoveNext();
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
+    /// <exception cref="ArgumentNullException">The <paramref name="comparer"/> is null.</exception>
+    public int GetHashCode(IEqualityComparer comparer)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        ArgumentNullException.ThrowIfNull(comparer);
+
+        var hashCode = new HashCode();
+        for (int i = 0; i < Length; i++)
+        {
+            hashCode.Add(comparer.GetHashCode(Array[i]!));
+        }
+        return hashCode.ToHashCode();
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
+    /// <exception cref="ArgumentNullException">The <paramref name="comparer"/> is null.</exception>
+    public int CompareTo(object? other, IComparer comparer)
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        ArgumentNullException.ThrowIfNull(comparer);
+
+        if (other is null)
+        {
+            return 1;
+        }
+
+        if (other is not IEnumerable otherEnumerable)
+        {
+            throw new ArgumentException("Object must be a collection.", nameof(other));
+        }
+        
+        IEnumerator enumerator = otherEnumerable.GetEnumerator();
+
+        for (int i = 0; i < Length; i++)
+        {
+            if (!enumerator.MoveNext())
+            {
+                return 1;
+            }
+
+            int result = comparer.Compare(Array[i], enumerator.Current);
+            if (result != 0)
+            {
+                return result;
+            }
+        }
+
+        if (other is IReadOnlyCollection<T> otherCollection)
+        {
+            return Length.CompareTo(otherCollection.Count);
+        }
+
+        return enumerator.MoveNext() ? -1 : 0;
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
+    public object Clone()
+    {
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        var newPooledArray = new PooledArray<T>(Pool, Length);
+        Array.CopyTo(newPooledArray.Array, 0);
+        return newPooledArray;
     }
 
     /// <summary>
     /// Creates a new span over the target array.
     /// </summary>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
     public Span<T> AsSpan()
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
-        return new(_handle.Array, 0, Count);
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        return new(Array, 0, Length);
     }
 
     /// <summary>
@@ -145,12 +257,13 @@ public readonly struct PooledArray<T> : IReadOnlyList<T>, IDisposable
     /// <exception cref="ArgumentOutOfRangeException">
     /// Thrown when the specified <paramref name="start"/> or end index is not in the range (&lt;0 or &gt;Length).
     /// </exception>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
     public Span<T> AsSpan(int start)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(start, Count, nameof(start));
-        return new(_handle.Array, start, Count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(start, Length, nameof(start));
+        return new(Array, start, Length);
     }
 
     /// <summary>
@@ -162,15 +275,16 @@ public readonly struct PooledArray<T> : IReadOnlyList<T>, IDisposable
     /// <exception cref="ArgumentOutOfRangeException">
     /// Thrown when the specified <paramref name="start"/> or end index is not in the range (&lt;0 or &gt;Length).
     /// </exception>
+    /// <exception cref="ObjectDisposedException">The <see cref="PooledArray{T}"/> has been disposed.</exception>
     public Span<T> AsSpan(int start, int length)
     {
-        ObjectDisposedException.ThrowIf(_handle.Disposed, this);
+        ObjectDisposedException.ThrowIf(Disposed, this);
         ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(start, Count, nameof(start));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(start, Length, nameof(start));
         ArgumentOutOfRangeException.ThrowIfNegative(length, nameof(length));
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(length, Count, nameof(length));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(length, Length, nameof(length));
         ArgumentOutOfRangeException.ThrowIfLessThan(length, start, nameof(length));
-        return new(_handle.Array, start, length);
+        return new(Array, start, length);
     }
 
     /// <summary>
@@ -191,11 +305,17 @@ public readonly struct PooledArray<T> : IReadOnlyList<T>, IDisposable
         return pooledArray.AsSpan();
     }
 
-    /// <summary>
-    /// Returns the rented array to the pool.
-    /// </summary>
-    public readonly void Dispose()
+    internal static PooledArray<T> FromCollection(ICollection<T> values, ArrayPool<T> arrayPool)
     {
-        _handle.Dispose();
+        PooledArray<T> array = new(arrayPool, values.Count);
+        values.CopyTo(array.Array, 0);
+        return array;
+    }
+
+    internal static PooledArray<T> FromSpan(ReadOnlySpan<T> values, ArrayPool<T> arrayPool)
+    {
+        PooledArray<T> array = new(arrayPool, values.Length);
+        values.CopyTo(array.Array);
+        return array;
     }
 }

@@ -13,9 +13,9 @@ public static class CollectionExtensions
     /// <typeparam name="T">The type of elements in the collection.</typeparam>
     /// <param name="values">The collection to convert.</param>
     /// <returns>A new <see cref="PooledArray{T}"/> containing the elements of the collection.</returns>
-    public static PooledArray<T> ToPooledArray<T>(this T values) where T : ICollection<T>
+    public static PooledArray<T> ToPooledArray<T>(this ICollection<T> values)
     {
-        return ToPooledArray(values, ArrayPool<T>.Shared);
+        return PooledArray<T>.FromCollection(values, ArrayPool<T>.Shared);
     }
 
     /// <summary>
@@ -26,7 +26,7 @@ public static class CollectionExtensions
     /// <returns>A new <see cref="PooledList{T}"/> containing the elements of the collection.</returns>
     public static PooledList<T> ToPooledList<T>(this T values) where T : ICollection<T>
     {
-        return ToPooledList(values, ArrayPool<T>.Shared);
+        return PooledList<T>.FromCollection(values, ArrayPool<T>.Shared);
     }
 
     /// <summary>
@@ -37,7 +37,7 @@ public static class CollectionExtensions
     /// <returns>A new <see cref="PooledArray{T}"/> containing the elements of the array.</returns>
     public static PooledArray<T> ToPooledArray<T>(this T[] values)
     {
-        return ToPooledArray(values, ArrayPool<T>.Shared);
+        return PooledArray<T>.FromCollection(values, ArrayPool<T>.Shared);
     }
 
     /// <summary>
@@ -48,7 +48,7 @@ public static class CollectionExtensions
     /// <returns>A new <see cref="PooledList{T}"/> containing the elements of the array.</returns>
     public static PooledList<T> ToPooledList<T>(this T[] values)
     {
-        return ToPooledList(values, ArrayPool<T>.Shared);
+        return PooledList<T>.FromCollection(values, ArrayPool<T>.Shared);
     }
 
     /// <summary>
@@ -59,7 +59,7 @@ public static class CollectionExtensions
     /// <returns>A new <see cref="PooledArray{T}"/> containing the elements of the span.</returns>
     public static PooledArray<T> ToPooledArray<T>(this ReadOnlySpan<T> values)
     {
-        return ToPooledArray(values, ArrayPool<T>.Shared);
+        return PooledArray<T>.FromSpan(values, ArrayPool<T>.Shared);
     }
 
     /// <summary>
@@ -70,7 +70,7 @@ public static class CollectionExtensions
     /// <returns>A new <see cref="PooledList{T}"/> containing the elements of the span.</returns>
     public static PooledList<T> ToPooledList<T>(this ReadOnlySpan<T> values)
     {
-        return ToPooledList(values, ArrayPool<T>.Shared);
+        return PooledList<T>.FromSpan(values, ArrayPool<T>.Shared);
     }
 
     /// <summary>
@@ -80,12 +80,9 @@ public static class CollectionExtensions
     /// <param name="values">The collection to convert.</param>
     /// <param name="arrayPool">The array pool to use for renting the array.</param>
     /// <returns>A new <see cref="PooledArray{T}"/> containing the elements of the collection.</returns>
-    public static PooledArray<T> ToPooledArray<T>(this T values, ArrayPool<T> arrayPool) where T : ICollection<T>
+    public static PooledArray<T> ToPooledArray<T>(this ICollection<T> values, ArrayPool<T> arrayPool)
     {
-        int count = values.Count;
-        PooledArrayHandle<T> handle = new(count, arrayPool);
-        values.CopyTo(handle.Array, 0);
-        return new PooledArray<T>(handle, count);
+        return PooledArray<T>.FromCollection(values, arrayPool);
     }
 
     /// <summary>
@@ -95,42 +92,9 @@ public static class CollectionExtensions
     /// <param name="values">The collection to convert.</param>
     /// <param name="arrayPool">The array pool to use for renting the array.</param>
     /// <returns>A new <see cref="PooledList{T}"/> containing the elements of the collection.</returns>
-    public static PooledList<T> ToPooledList<T>(this T values, ArrayPool<T> arrayPool) where T : ICollection<T>
+    public static PooledList<T> ToPooledList<T>(this ICollection<T> values, ArrayPool<T> arrayPool)
     {
-        int count = values.Count;
-        PooledArrayHandle<T> handle = new(count, arrayPool);
-        values.CopyTo(handle.Array, 0);
-        return new PooledList<T>(handle, count);
-    }
-
-    /// <summary>
-    /// Converts a <typeparamref name="T"/> array to a <see cref="PooledArray{T}"/> using a specified <see cref="ArrayPool{T}"/>.
-    /// </summary>
-    /// <typeparam name="T">The type of elements in the array.</typeparam>
-    /// <param name="values">The array to convert.</param>
-    /// <param name="arrayPool">The array pool to use for renting the array.</param>
-    /// <returns>A new <see cref="PooledArray{T}"/> containing the elements of the array.</returns>
-    public static PooledArray<T> ToPooledArray<T>(this T[] values, ArrayPool<T> arrayPool)
-    {
-        int length = values.Length;
-        PooledArrayHandle<T> handle = new(length, arrayPool);
-        values.CopyTo(handle.Array, 0);
-        return new PooledArray<T>(handle, length);
-    }
-
-    /// <summary>
-    /// Converts a <typeparamref name="T"/> array to a <see cref="PooledList{T}"/> using a specified <see cref="ArrayPool{T}"/>.
-    /// </summary>
-    /// <typeparam name="T">The type of elements in the array.</typeparam>
-    /// <param name="values">The array to convert.</param>
-    /// <param name="arrayPool">The array pool to use for renting the array.</param>
-    /// <returns>A new <see cref="PooledList{T}"/> containing the elements of the array.</returns>
-    public static PooledList<T> ToPooledList<T>(this T[] values, ArrayPool<T> arrayPool)
-    {
-        int length = values.Length;
-        PooledArrayHandle<T> handle = new(length, arrayPool);
-        values.CopyTo(handle.Array, 0);
-        return new PooledList<T>(handle, length);
+        return PooledList<T>.FromCollection(values, arrayPool);
     }
 
     /// <summary>
@@ -142,10 +106,7 @@ public static class CollectionExtensions
     /// <returns>A new <see cref="PooledArray{T}"/> containing the elements of the span.</returns>
     public static PooledArray<T> ToPooledArray<T>(this ReadOnlySpan<T> values, ArrayPool<T> arrayPool)
     {
-        int length = values.Length;
-        PooledArrayHandle<T> handle = new(length, arrayPool);
-        values.CopyTo(handle.Array.AsSpan());
-        return new PooledArray<T>(handle, length);
+        return PooledArray<T>.FromSpan(values, arrayPool);
     }
 
     /// <summary>
@@ -157,9 +118,6 @@ public static class CollectionExtensions
     /// <returns>A new <see cref="PooledList{T}"/> containing the elements of the span.</returns>
     public static PooledList<T> ToPooledList<T>(this ReadOnlySpan<T> values, ArrayPool<T> arrayPool)
     {
-        int length = values.Length;
-        PooledArrayHandle<T> handle = new(length, arrayPool);
-        values.CopyTo(handle.Array.AsSpan());
-        return new PooledList<T>(handle, length);
+        return PooledList<T>.FromSpan(values, arrayPool);
     }
 }

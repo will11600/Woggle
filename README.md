@@ -1,19 +1,26 @@
 # Woggle
 
-Woggle is a .NET library that provides high-performance, memory-efficient collections using `ArrayPool<T>` to reduce garbage collection pressure and improve the performance of your applications.
+[![NuGet version](https://img.shields.io/nuget/v/Woggle?style=flat-square)](https://www.nuget.org/packages/Woggle)
+[![License](https://img.shields.io/github/license/will11600/Woggle?style=flat-square)](LICENSE.txt)
 
-This library is ideal for scenarios where you are working with large collections of data or in performance-critical code paths where minimizing memory allocations is crucial.
+Woggle is a .NET library that provides high-performance, memory-efficient collections using `ArrayPool<T>` to reduce garbage collection pressure and improve the performance of your applications.
 
 ## Key Features
 
-  - **`PooledArray<T>`**: A struct-based, read-only list that is backed by a rented array from an `ArrayPool<T>`.
-  - **`PooledList<T>`**: A mutable list, similar to `List<T>`, but with its underlying array rented from an `ArrayPool<T>`.
-  - **`CollectionExtensions`**: A set of extension methods for easily converting existing collections (`ICollection<T>`, `T[]`, `ReadOnlySpan<T>`) into `PooledArray<T>` and `PooledList<T>`.
-  - **Memory Efficiency**: By using `ArrayPool<T>`, Woggle helps you avoid frequent and large memory allocations, leading to fewer garbage collections and a more stable application performance.
+* **GC Reduction**: Collections rent and return array buffers to an `ArrayPool<T>`, which minimizes temporary object creation and reduces garbage collector workload.
+* **Pooled Collections**: Provides two main high-performance, disposable collection types:
+    * **`PooledList<T>`**: A resizable list implementation, similar to `List<T>`, but backed by a rented array that automatically expands capacity as needed.
+    * **`PooledArray<T>`**: A fixed-size array wrapper, designed for highly efficient, span-based operations on a pre-allocated array segment.
+* **Span Integration**: Both collections are fully integrated with modern .NET primitives, offering explicit conversion operators to `Span<T>` and `ReadOnlySpan<T>` for zero-allocation memory access and manipulation.
+* **Convenience Extensions**: Easily convert existing .NET collections, arrays, and spans into pooled variants using extension methods like `ToPooledArray()` and `ToPooledList()`.
 
 ## Getting Started
 
-To get started with the Woggle library, you can include the source files in your project.
+You can install the library through the NuGet Package Manager:
+
+```bash
+Install-Package Woggle
+```
 
 ### Using `PooledList<T>`
 
@@ -42,21 +49,26 @@ Console.WriteLine(pooledList[1]); // Output: 20
 
 ### Using `PooledArray<T>`
 
-If you need an static collection, `PooledArray<T>` is an excellent choice.
+`PooledArray<T>` is a fixed-size structure, and attempts to modify its length (e.g., calling Add or Remove) will throw a NotSupportedException.
 
 ```csharp
 using Woggle;
-using System;
 using System.Buffers;
 
-// Create a PooledArray from a ReadOnlySpan
-ReadOnlySpan<int> sourceData = new int[] { 1, 2, 3, 4, 5 };
-using var pooledArray = new PooledArray<int>(sourceData);
+// Rents an array of the specified length (5) from the pool.
+using (var pooledArray = new PooledArray<string>(5))
+{
+    pooledArray[0] = "Hello";
+    pooledArray[1] = "Woggle";
 
-// Access elements
-Console.WriteLine(pooledArray[2]); // Output: 3
+    // Access the contents as a span
+    ReadOnlySpan<string> span = pooledArray.AsSpan();
+    Console.WriteLine($"Length: {pooledArray.Length}"); // Output: Length: 5
 
-// The array is returned to the pool upon disposal
+    // Implicit conversion to Span<T>
+    Span<string> arraySpan = pooledArray;
+    // arraySpan is a Span<string> over the entire rented array segment.
+} // The rented array is automatically returned to the pool here.
 ```
 
 ## Effortless Conversion with Extension Methods
@@ -83,7 +95,7 @@ Console.WriteLine(pooledArrayFromArray[1]); // Output: 10
 
 ## Working with `Span<T>` for High-Performance Scenarios
 
-Both `PooledArray<T>` can be implicitly converted to `Span<T>` and `ReadOnlySpan<T>`, enabling you to work with them in high-performance, allocation-free APIs.
+`PooledArray<T>` can be implicitly converted to `Span<T>` and `ReadOnlySpan<T>`, enabling you to work with them in high-performance, allocation-free APIs.
 
 ```csharp
 using Woggle;
@@ -107,6 +119,7 @@ foreach (var item in list)
     Console.WriteLine(item); // Output: 2, 4, 6
 }
 ```
+
 
 ## Custom `ArrayPool<T>` Support
 
