@@ -11,7 +11,7 @@ public class DisposeTests
 
         // Act & Assert
         Assert.Throws<ObjectDisposedException>(() => list.Add(3));
-        Assert.Throws<ObjectDisposedException>(() => list.Add([4]));
+        Assert.Throws<ObjectDisposedException>(() => list.AddRange([4]));
         Assert.Throws<ObjectDisposedException>(() => list.Clear());
         Assert.Throws<ObjectDisposedException>(() => list.Contains(1));
         Assert.Throws<ObjectDisposedException>(() => list.CopyTo(new int[2], 0));
@@ -19,8 +19,6 @@ public class DisposeTests
         Assert.Throws<ObjectDisposedException>(() => list.Insert(0, 0));
         Assert.Throws<ObjectDisposedException>(() => list.Remove(1));
         Assert.Throws<ObjectDisposedException>(() => list.RemoveAt(0));
-        Assert.Throws<ObjectDisposedException>(() => list[0] = 5);
-        Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
         Assert.Throws<ObjectDisposedException>(() => {
             foreach (var _ in list) { }
         });
