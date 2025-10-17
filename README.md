@@ -7,7 +7,7 @@ Woggle is a .NET library that provides high-performance, memory-efficient collec
 
 ## Key Features
 
-* **GC Reduction**: Collections rent and return array buffers to an `ArrayPool<T>`, which minimizes temporary object creation and reduces garbage collector workload.
+* **Reduce Memory Allocation by up to 99%:** Woggle's pooled collections can slash memory allocations by up to 99% compared to standard .NET collections, significantly reducing pressure on the garbage collector.
 * **Pooled Collections**: Provides two main high-performance, disposable collection types:
     * **`PooledList<T>`**: A resizable list implementation, similar to `List<T>`, but backed by a rented array that automatically expands capacity as needed.
     * **`PooledArray<T>`**: A fixed-size array wrapper, designed for highly efficient, span-based operations on a pre-allocated array segment.
@@ -141,3 +141,31 @@ pooledListWithCustomPool.Add(15);
 var data = new[] { 1, 2, 3 };
 using var pooledArrayWithCustomPool = data.ToPooledArray(customPool);
 ```
+
+## Benchmarks
+
+These benchmarks were run on Windows 11 using a AMD Ryzen 7 5700G processor at 3.80GHz. Package version 2.0.3.
+
+### Pooled List
+
+| Method             | N    | Mean       | Error    | StdDev   | Ratio | RatioSD | Gen0   | Gen1   | Allocated | Alloc Ratio |
+|------------------- |----- |-----------:|---------:|---------:|------:|--------:|-------:|-------:|----------:|------------:|
+| **List_Add**           | **100**  |   **189.1 ns** |  **3.32 ns** |  **3.11 ns** |  **1.00** |    **0.02** | **0.1414** | **0.0002** |    **1184 B** |        **1.00** |
+| PooledList_Add     | 100  |   174.4 ns |  1.51 ns |  1.41 ns |  0.92 |    0.02 | 0.0048 |      - |      40 B |        0.03 |
+| List_Iterate       | 100  |   143.4 ns |  1.98 ns |  1.86 ns |  0.76 |    0.02 | 0.0544 |      - |     456 B |        0.39 |
+| PooledList_Iterate | 100  |   266.7 ns |  1.22 ns |  1.08 ns |  1.41 |    0.02 | 0.0095 |      - |      80 B |        0.07 |
+|                    |      |            |          |          |       |         |        |        |           |             |
+| **List_Add**           | **1000** | **1,169.2 ns** | **22.66 ns** | **20.09 ns** |  **1.00** |    **0.02** | **1.0052** |      **-** |    **8424 B** |       **1.000** |
+| PooledList_Add     | 1000 | 1,116.7 ns |  2.36 ns |  2.21 ns |  0.96 |    0.02 | 0.0038 |      - |      40 B |       0.005 |
+| List_Iterate       | 1000 | 1,328.3 ns | 13.50 ns | 12.62 ns |  1.14 |    0.02 | 0.4845 |      - |    4056 B |       0.481 |
+| PooledList_Iterate | 1000 | 2,243.0 ns |  7.08 ns |  6.28 ns |  1.92 |    0.03 | 0.0076 |      - |      80 B |       0.009 |
+
+### Pooled Array
+
+| Method                    | N    | Mean      | Error    | StdDev    | Median    | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
+|-------------------------- |----- |----------:|---------:|----------:|----------:|------:|--------:|-------:|----------:|------------:|
+| **Array_CreateAndFill**       | **100**  |  **36.44 ns** | **0.630 ns** |  **0.589 ns** |  **36.65 ns** |  **1.00** |    **0.02** | **0.0507** |     **424 B** |        **1.00** |
+| PooledArray_CreateAndFill | 100  |  82.91 ns | 0.372 ns |  0.348 ns |  82.88 ns |  2.28 |    0.04 | 0.0048 |      40 B |        0.09 |
+|                           |      |           |          |           |           |       |         |        |           |             |
+| **Array_CreateAndFill**       | **1000** | **329.01 ns** | **6.483 ns** | **17.305 ns** | **320.91 ns** |  **1.00** |    **0.07** | **0.4807** |    **4024 B** |       **1.000** |
+| PooledArray_CreateAndFill | 1000 | 501.94 ns | 1.015 ns |  0.848 ns | 501.82 ns |  1.53 |    0.07 | 0.0048 |      40 B |       0.010 |
