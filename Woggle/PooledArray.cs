@@ -87,7 +87,7 @@ public sealed class PooledArray<T> : PooledArrayHandler<T>, ICollection<T>, ILis
     public bool Contains(T item)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
-        return _indexOf(Array, item, Length) >= 0;
+        return IndexOf(Length, item) >= 0;
     }
 
     /// <inheritdoc/>
@@ -104,16 +104,7 @@ public sealed class PooledArray<T> : PooledArrayHandler<T>, ICollection<T>, ILis
     public int IndexOf(T item)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
-
-        for (int i = 0; i < Length; i++)
-        {
-            if (EqualityComparer<T>.Default.Equals(Array[i], item))
-            {
-                return i;
-            }
-        }
-
-        return -1;
+        return IndexOf(Length, item);
     }
 
     /// <inheritdoc/>

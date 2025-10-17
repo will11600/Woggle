@@ -192,7 +192,7 @@ public sealed class PooledList<T> : PooledArrayHandler<T>, IList<T>, ICollection
     public bool Contains(T item)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
-        return IndexOf(item) != -1;
+        return IndexOf(Count, item) != -1;
     }
 
     /// <inheritdoc/>
@@ -208,16 +208,7 @@ public sealed class PooledList<T> : PooledArrayHandler<T>, IList<T>, ICollection
     public int IndexOf(T item)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
-
-        for (int i = 0; i < Count; i++)
-        {
-            if (EqualityComparer<T>.Default.Equals(Array[i], item))
-            {
-                return i;
-            }
-        }
-
-        return -1;
+        return IndexOf(Count, item);
     }
 
     /// <inheritdoc/>
@@ -250,7 +241,7 @@ public sealed class PooledList<T> : PooledArrayHandler<T>, IList<T>, ICollection
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
 
-        int index = _indexOf(Array, item, Count);
+        int index = IndexOf(Count, item);
         if (index == -1)
         {
             return false;

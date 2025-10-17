@@ -120,4 +120,24 @@ public abstract class PooledArrayHandler<T> : IDisposable
         Dispose(true);
         GC.SuppressFinalize(this);
     }
+
+    /// <summary>
+    /// Determines the index of specific item in the <see cref="Array"/>.
+    /// </summary>
+    /// <param name="count">The number of elements from the start of the array to search.</param>
+    /// <param name="item">The <typeparamref name="T"/> to locate in the array.</param>
+    /// <returns>The index of <paramref name="item"/> if found in the array; otherwise -1.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    protected int IndexOf(int count, T item)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            if (EqualityComparer<T>.Default.Equals(Array[i], item))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 }
