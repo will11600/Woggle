@@ -120,23 +120,4 @@ public abstract class PooledArrayHandler<T> : IDisposable
         Dispose(true);
         GC.SuppressFinalize(this);
     }
-
-    internal static int LinearSearch(T[] values, T item, int count)
-    {
-        for (int i = 0; i < count; i++)
-        {
-            if (EqualityComparer<T>.Default.Equals(values[i], item))
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    internal static int BinarySearch(T[] values, T item, int count)
-    {
-        int result = System.Array.BinarySearch(values, 0, count, item);
-        return Math.Max(result, -1);
-    }
 }

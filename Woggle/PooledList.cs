@@ -14,8 +14,6 @@ public sealed class PooledList<T> : PooledArrayHandler<T>, IList<T>, ICollection
 {
     private const int DefaultCapacity = 8;
 
-    private static readonly Func<T[], T, int, int> _indexOf;
-
     /// <inheritdoc/>
     public T this[int index]
     {
@@ -43,17 +41,6 @@ public sealed class PooledList<T> : PooledArrayHandler<T>, IList<T>, ICollection
     public bool IsReadOnly => false;
 
     private Span<T> Items => new(Array, 0, Count);
-
-    static PooledList()
-    {
-        if (typeof(T).IsAssignableTo(typeof(IComparable<T>)))
-        {
-            _indexOf = BinarySearch;
-            return;
-        }
-
-        _indexOf = LinearSearch;
-    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PooledList{T}"/> class that is empty and has a default initial capacity.
@@ -221,7 +208,16 @@ public sealed class PooledList<T> : PooledArrayHandler<T>, IList<T>, ICollection
     public int IndexOf(T item)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
-        return _indexOf(Array, item, Count);
+
+        for (int i = 0; i < Count; i++)
+        {
+            if (EqualityComparer<T>.Default.Equals(Array[i], item))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /// <inheritdoc/>

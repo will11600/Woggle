@@ -11,8 +11,6 @@ public sealed class PooledArray<T> : PooledArrayHandler<T>, ICollection<T>, ILis
 {
     private const string FixedSizeCollectionMessage = "Collection is of a fixed size.";
 
-    private static readonly Func<T[], T, int, int> _indexOf;
-
     /// <inheritdoc/>
     public T this[int index]
     {
@@ -28,17 +26,6 @@ public sealed class PooledArray<T> : PooledArrayHandler<T>, ICollection<T>, ILis
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, Length, nameof(index));
             Array[index] = value;
         }
-    }
-
-    static PooledArray()
-    {
-        if (typeof(T).IsAssignableTo(typeof(IComparable<T>)))
-        {
-            _indexOf = BinarySearch;
-            return;
-        }
-
-        _indexOf = LinearSearch;
     }
 
     /// <summary>
@@ -117,7 +104,16 @@ public sealed class PooledArray<T> : PooledArrayHandler<T>, ICollection<T>, ILis
     public int IndexOf(T item)
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
-        return _indexOf(Array, item, Length);
+
+        for (int i = 0; i < Length; i++)
+        {
+            if (EqualityComparer<T>.Default.Equals(Array[i], item))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /// <inheritdoc/>
