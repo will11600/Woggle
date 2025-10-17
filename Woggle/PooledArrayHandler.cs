@@ -125,7 +125,7 @@ public abstract class PooledArrayHandler<T> : IDisposable
     {
         for (int i = 0; i < count; i++)
         {
-            if (Equals(values[i], item))
+            if (EqualityComparer<T>.Default.Equals(values[i], item))
             {
                 return i;
             }
