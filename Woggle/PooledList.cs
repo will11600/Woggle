@@ -287,7 +287,7 @@ public sealed class PooledList<T> : PooledArrayHandler<T>, IList<T>, ICollection
     public IEnumerator<T> GetEnumerator()
     {
         ObjectDisposedException.ThrowIf(Disposed, this);
-        return Array.Take(Count).GetEnumerator();
+        return EnumerateContents(Count);
     }
 
     IEnumerator IEnumerable.GetEnumerator()

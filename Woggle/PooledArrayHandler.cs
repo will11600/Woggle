@@ -40,6 +40,7 @@ public abstract class PooledArrayHandler<T> : IDisposable
     /// </remarks>
     protected T[] Array
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _rentedArray!;
         set
         {
@@ -71,6 +72,19 @@ public abstract class PooledArrayHandler<T> : IDisposable
     ~PooledArrayHandler()
     {
         Dispose(false);
+    }
+
+    /// <summary>
+    /// Enumerates through the contents of the pooled array.
+    /// </summary>
+    /// <param name="count">The number of items from the start of the array to enumerate.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    protected IEnumerator<T> EnumerateContents(int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            yield return _rentedArray![i];
+        }
     }
 
     /// <summary>
