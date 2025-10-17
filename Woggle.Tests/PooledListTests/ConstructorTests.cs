@@ -24,7 +24,6 @@ public class ConstructorTests
     }
 
     [Theory]
-    [InlineData(0)]
     [InlineData(-1)]
     public void CapacityConstructor_WithInvalidCapacity_ThrowsArgumentOutOfRangeException(int invalidCapacity)
     {

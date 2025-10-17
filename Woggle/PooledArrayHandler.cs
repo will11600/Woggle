@@ -62,7 +62,7 @@ public abstract class PooledArrayHandler<T> : IDisposable
     {
         Disposed = false;
         Pool = pool ?? throw new ArgumentNullException(nameof(pool));
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity, nameof(capacity));
+        ArgumentOutOfRangeException.ThrowIfNegative(capacity, nameof(capacity));
         _rentedArray = Pool.Rent(capacity);
     }
 
